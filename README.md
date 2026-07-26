@@ -4,6 +4,8 @@ A lightweight **Redis-backed task scheduler and HTTP worker** written in Rust. T
 
 Thermite accepts tasks over HTTP or fetches them from another service, stores them in Redis, and executes them when they are due by sending an HTTP `POST` request to the target task URL. It also supports **periodic jobs** using cron expressions.
 
+In short: it's a small, self-hosted alternative to things like Celery Beat / delayed-job queues, where "task execution" simply means "POST to a webhook URL at the scheduled time," with cron recurrence, retries, and a dead-letter queue built in.
+
 ## What this tool does
 
 Thermite runs in one of two modes:
