@@ -59,6 +59,24 @@ mod tests {
     }
 
     #[test]
+    fn test_periodic_schedule_is_recalculated_for_each_run() {
+        let mut task = BaseTask {
+            category: "periodic".to_string(),
+            scheduled_at: Utc::now().timestamp() as u64,
+            cron_scheduled_at: "* * * * *".to_string(),
+            ..Default::default()
+        };
+
+        task.set_next_unix_datetime().unwrap();
+        let first_run = task.scheduled_at;
+
+        task.set_next_unix_datetime().unwrap();
+        let second_run = task.scheduled_at;
+
+        assert!(second_run > first_run);
+    }
+
+    #[test]
     fn test_schedule_retry_increments_count_and_records_error() {
         std::env::set_var("THERMITE_RETRY_BASE_DELAY_SECS", "1");
 

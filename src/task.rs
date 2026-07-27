@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 use std::str::FromStr;
 
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -285,10 +285,10 @@ impl BaseTask {
     ///
     /// ```
     pub fn get_next_unix_datetime(&self) -> Result<i64, TaskQueueError> {
-
         if self.category != "periodic" {
             return Ok(self.scheduled_at as i64);
         }
+
         let cron_expression = self.cron_scheduled_at.trim();
         let cron_schedule = if cron_expression.split_whitespace().count() == 5 {
             format!("0 {}", cron_expression)
@@ -301,12 +301,23 @@ impl BaseTask {
         let schedule = Schedule::from_str(&cron_schedule)
             .map_err(|e| TaskQueueError::InvalidCronExpression(e.to_string()))?;
 
+        let now_ts = Utc::now().timestamp();
+        let base_ts = std::cmp::max(now_ts, self.scheduled_at as i64);
+        let base_datetime = Utc
+            .timestamp_opt(base_ts, 0)
+            .single()
+            .ok_or_else(|| TaskQueueError::InvalidCronExpression("Invalid base timestamp for schedule".to_string()))?;
+
         let next_occurrence = schedule
-            .upcoming(Utc)
+            .after(&base_datetime)
             .next()
             .ok_or_else(|| TaskQueueError::InvalidCronExpression("No upcoming dates found".to_string()))?;
 
-        debug!(next_occurrence = %next_occurrence, "computed next periodic execution time");
+        debug!(
+            base_ts,
+            next_occurrence = %next_occurrence,
+            "computed next periodic execution time"
+        );
 
         Ok(next_occurrence.timestamp())
     }
