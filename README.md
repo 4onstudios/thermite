@@ -134,6 +134,15 @@ curl -X POST http://localhost:8080/submit-task \
   }'
 ```
 
+Or use the sample payload file included in this repo:
+
+```bash
+curl -X POST http://localhost:8080/submit-task \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $THERMITE_API_KEY" \
+  -d @samples/submit-task.sample.json
+```
+
 ### `POST /submit-tasks`
 
 Submit multiple tasks in one request. The request body is an array of task objects. Each task is validated and enqueued independently — one bad task does not reject the whole batch.

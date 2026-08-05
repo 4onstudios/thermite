@@ -1,0 +1,15 @@
+{
+  "id": "sample-task-001",
+  "name": "Feature test webhook",
+  "description": "Sample task payload for testing Thermite app features",
+  "category": "non_periodic",
+  "priority": "high",
+  "task": "https://jobs.example.com/hooks/feature-test",
+  "scheduled_at": 1893456000,
+  "cron_scheduled_at": "0 0 * * *",
+  "args": {
+    "feature": "new-app-feature",
+    "environment": "staging",
+    "triggered_by": "manual-test"
+  }
+}
