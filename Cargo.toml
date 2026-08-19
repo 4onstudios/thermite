@@ -7,19 +7,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1.0"
-actix-web = "4.9.0"
+thiserror = "1.0.69"
+actix-web = "4.14.1"
 redis = { version = "0.26.1", features = ["aio", "async-std-comp"] }
-tokio = { version = "1.43.1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-reqwest = { version = "0.12.5", features = ["json"] }
+tokio = { version = "1.53.1", features = ["full"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+reqwest = { version = "0.12.28", features = ["json"] }
 cron = "0.12.1"
-chrono = "0.4"
-clap = "4.5.16"
-url = "2.5"
+chrono = "0.4.45"
+clap = "4.6.6"
+url = "2.5.8"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
-serial_test = "3"
+serial_test = "3.5.0"
