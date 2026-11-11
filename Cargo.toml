@@ -22,4 +22,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
+native-tls = "0.2.12"
+openssl = "0.10.80"
 serial_test = "3.5.0"
+tokio-native-tls = "0.3.1"

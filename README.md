@@ -264,10 +264,47 @@ Thermite uses these environment variables and CLI options:
 | `THERMITE_API_KEY` | Optional API key required on `POST /submit-task`, `POST /submit-tasks`, and `GET /dead-letter-tasks` via `x-api-key` or `Authorization: Bearer ...` | unset |
 | `THERMITE_ALLOWED_HOSTS` | Optional comma-separated allowlist of task target hosts/domains such as `jobs.example.com,hooks.example.org` | unset |
 | `THERMITE_REQUIRE_HTTPS` | If set to `true`, `1`, `yes`, or `on`, only `https://` task targets are accepted | unset |
+| `THERMITE_OUTBOUND_BEARER_TOKEN` | Optional bearer credential for explicitly configured outbound URLs. Store it in a secret manager. | unset |
+| `THERMITE_OUTBOUND_BEARER_URLS` | Comma-separated exact HTTPS task URLs allowed to receive that credential. | unset |
 | `THERMITE_MAX_RETRIES` | Default retry count before a failed task is moved to the Redis dead-letter queue | `3` |
 | `THERMITE_RETRY_BASE_DELAY_SECS` | Base retry delay in seconds; Thermite applies exponential backoff from this value | `30` |
 | `RUST_LOG` | Log level / filter for structured logs, e.g. `info` or `thermite=debug,actix_web=info` | `info` |
 | `--mode` | Run mode: `receiver` or `fetcher` | `receiver` |
+
+### Outbound bearer authentication
+
+Set both `THERMITE_OUTBOUND_BEARER_TOKEN` and `THERMITE_OUTBOUND_BEARER_URLS`
+to authenticate task requests to selected services. For example, the URL
+setting could contain
+`https://api.example.com/jobs/refresh/,https://api.example.com/jobs/retry/`.
+Supply the token separately through the runtime's secret store, and configure
+the target service to accept the same value.
+
+The credential is sent only to an exact, parsed URL match, including its scheme,
+host, port and path. URLs in this allowlist must use HTTPS and cannot contain
+user information, a query string or a fragment. A trailing slash is significant.
+Authenticated requests do not follow redirects; any non-2xx response enters
+the normal retry/dead-letter flow. Other task requests retain their existing
+HTTP client behavior.
+
+Both settings must be present and valid, or Thermite refuses to start. When
+neither is set, outbound requests remain unauthenticated as before. In
+`receiver` mode, enabling outbound authentication also requires a separate
+`THERMITE_API_KEY`: anyone able to submit tasks could otherwise cause Thermite
+to call the protected URLs. Configure existing task submitters to use this key
+when enabling it, or their submissions will be rejected. Secure Redis and, in
+`fetcher` mode, trust the configured task source as well. If
+`THERMITE_ALLOWED_HOSTS` is set, it must also permit the configured target
+hosts.
+
+Never put the bearer token in a global HTTP header, task URL, arguments,
+Redis, source control or logs. Use a high-entropy token, separate from
+`THERMITE_API_KEY`, and rotate it with the receiving service.
+
+The Rust `worker::execute_task` function returns `TaskExecutionError`, which
+distinguishes transport errors from non-2xx HTTP statuses. Applications using
+authenticated dispatch can construct a `worker::TaskExecutor` with an
+`OutboundBearerAuth`.
 
 ### Observability
 

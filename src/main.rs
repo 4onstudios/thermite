@@ -52,20 +52,18 @@ fn spawn_queue_dispatcher(redis_client: Client, tx: mpsc::Sender<BaseTask>) {
 
 fn spawn_task_processor(
     redis_client: Client,
-    http_client: HttpClient,
+    executor: Arc<worker::TaskExecutor>,
     mut rx: mpsc::Receiver<BaseTask>,
 ) {
-    let http_client = Arc::new(http_client);
-
     tokio::spawn(async move {
         while let Some(task) = rx.recv().await {
-            let client = Arc::clone(&http_client);
+            let executor = Arc::clone(&executor);
             let failure_client = redis_client.clone();
             let handle = tokio::spawn(async move {
                 let failed_task = task.clone();
 
-                match worker::execute_task(client, task).await {
-                    Ok(_) => Ok::<(), reqwest::Error>(()),
+                match executor.execute_task(task).await {
+                    Ok(_) => Ok::<(), worker::TaskExecutionError>(()),
                     Err(error) => {
                         if let Err(queue_error) =
                             queue::handle_task_failure(&failure_client, &failed_task, &error.to_string()).await
@@ -93,14 +91,14 @@ fn spawn_task_processor(
 
 async fn start_receiver(
     redis_client: Client,
-    http_client: HttpClient,
+    executor: Arc<worker::TaskExecutor>,
     data: web::Data<Mutex<AppState>>,
     tx: mpsc::Sender<BaseTask>,
     rx: mpsc::Receiver<BaseTask>
 ) -> std::io::Result<()> {
 
     spawn_queue_dispatcher(redis_client.clone(), tx);
-    spawn_task_processor(redis_client, http_client, rx);
+    spawn_task_processor(redis_client, executor, rx);
 
     let bind_address = env::var("TASKS_URL").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     info!(bind_address = %bind_address, "starting receiver HTTP server");
@@ -126,6 +124,7 @@ async fn start_receiver(
 async fn start_fetcher(
     redis_client: Client,
     http_client: HttpClient,
+    executor: Arc<worker::TaskExecutor>,
     data: web::Data<Mutex<AppState>>,
     tx: mpsc::Sender<BaseTask>,
     rx: mpsc::Receiver<BaseTask>
@@ -141,7 +140,7 @@ async fn start_fetcher(
     info!("starting fetcher loop");
 
     spawn_queue_dispatcher(redis_client.clone(), tx);
-    spawn_task_processor(redis_client, http_client.clone(), rx);
+    spawn_task_processor(redis_client, executor, rx);
 
     // Fetch tasks from the URL and enqueue them
     // Spawning a task to fetch tasks from the given URL every second
@@ -204,6 +203,23 @@ fn cli() -> Command {
             .default_value("localhost:8080"))
 }
 
+fn validate_receiver_security(
+    mode: &str,
+    outbound_auth_enabled: bool,
+    api_key: Option<&str>,
+) -> std::io::Result<()> {
+    if mode == "receiver"
+        && outbound_auth_enabled
+        && !matches!(api_key, Some(value) if !value.trim().is_empty())
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "THERMITE_API_KEY is required in receiver mode when outbound bearer authentication is configured",
+        ));
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     init_tracing();
@@ -212,6 +228,11 @@ async fn main() -> std::io::Result<()> {
 
     let mode = matches.get_one::<String>("mode").unwrap();
     info!(mode = %mode, "starting thermite");
+
+    let outbound_auth = worker::OutboundBearerAuth::from_env()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string()))?;
+    let api_key = env::var("THERMITE_API_KEY").ok();
+    validate_receiver_security(mode, outbound_auth.is_some(), api_key.as_deref())?;
 
     let default_redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
     let redis_url = matches.get_one::<String>("redis-url").unwrap_or(&default_redis_url);
@@ -228,18 +249,26 @@ async fn main() -> std::io::Result<()> {
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| std::io::Error::other(format!("Failed to build HTTP client: {e}")))?;
+    let executor = Arc::new(
+        worker::TaskExecutor::new(
+            Arc::new(http_client.clone()),
+            HttpClient::builder().timeout(std::time::Duration::from_secs(15)),
+            outbound_auth,
+        )
+        .map_err(|e| std::io::Error::other(format!("Failed to build task HTTP client: {e}")))?,
+    );
     let data = web::Data::new(Mutex::new(AppState {
         redis_client: redis_client.clone(),
     }));
 
     let (tx, rx): (mpsc::Sender<BaseTask>, mpsc::Receiver<BaseTask>) = mpsc::channel(32);
 
-    if mode == "receiver" {
-        let _ = start_receiver(redis_client, http_client, data, tx, rx).await;
-    } else if mode == "fetcher" {
-        let _ = start_fetcher(redis_client, http_client, data, tx, rx).await;
-    } else {
-        error!(mode = %mode, "invalid APP_MODE; must be 'receiver' or 'fetcher'");
+    match mode.as_str() {
+        "receiver" => start_receiver(redis_client, executor, data, tx, rx).await,
+        "fetcher" => start_fetcher(redis_client, http_client, executor, data, tx, rx).await,
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "mode must be 'receiver' or 'fetcher'",
+        )),
     }
-    Ok(())
 }
