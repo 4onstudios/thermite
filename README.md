@@ -237,6 +237,16 @@ This starts:
 - the Thermite worker on `http://localhost:8080` (bound to `0.0.0.0:8080` inside the container)
 - Redis on `localhost:6379`
 
+### Build a Docker image
+
+From the repository root, build the image with:
+
+```bash
+docker build -t thermite:local .
+```
+
+To run Thermite with its Redis dependency, use the Docker Compose command above.
+
 ### With Cargo
 
 ```bash
